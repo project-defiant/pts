@@ -35,6 +35,7 @@ steps:
       transformer: go
       source: input/go/go.obo
       destination: output/go/go.parquet
+  ##################################################################################################
 
   #: EXPRESSION STEP :##############################################################################
   expression:
@@ -121,8 +122,8 @@ steps:
       transformer: so
   ##################################################################################################
 
-  #: TARGET STEP :##################################################################################
-  target:
+  #: TARGET_PREPROCESS STEP :##################################################################################
+  target_preprocess:
     - name: unzip subcellular location
       source: input/target/hpa/subcellular_location.tsv.zip
       destination: intermediate/target/hpa/subcellular_location.tsv
@@ -183,9 +184,40 @@ steps:
         aopwiki: input/target/safety/aopwiki.json
         pharmacogenetics: output/pharmacogenomics
       destination: intermediate/target/safety.parquet
+  ##################################################################################################
 
-  #: TARGET_GENE_ESSENTIALITY STEP :#### - part of target, pyspark tasks must run standalone for now
-  target_gene_essentiality:
+  #: TARGET STEP :##################################################################################
+  target:
+  - name: pyspark transform target
+    pyspark: target
+    source:
+      ensembl: intermediate/target/preprocess/ensembl/homo_sapiens.parquet
+      hgnc: intermediate/target/preprocess/hgnc.json
+      uniprot: intermediate/target/preprocess/uniprot/uniprot.txt
+      tec: intermediate/target/preprocess/tep/tep.json.gz
+      project_scores_ids: intermediate/target/preprocess/project-scores/gene_identifiers_latest.parquet
+      project_scores_essentiality_matrix: intermediate/target/preprocess/project-scores/04_binaryDepScores.parquet
+      genetic_constraints: intermediate/target/preprocess/gnomad/gnomad_constraint_metrics.tsv
+      homology_dictionary: intermediate/target/preprocess/homologue/species_EnsemblVertebrates.txt
+      homology_coding_proteins: intermediate/target/preprocess/homologue/homologies/*.tsv.gz
+      homology_gene_dictionary: intermediate/target/preprocess/homologue/gene_dictionary/*.parquet
+      hpa: intermediate/target/preprocess/hpa/subcellular_location.tsv.gz
+      hpa_sl: intermediate/target/preprocess/hpa/subcellular_locations_ssl.parquet
+      ncbi: intermediate/target/preprocess/ncbi/Homo_sapiens.gene_info
+      reactome_etl: intermediate/reactome/part*
+      reactome_pathways: input/target/reactome/Ensembl2Reactome.txt
+      safety_evidence: intermediate/target/safety.parquet
+      tractability: input/target/tractability/tractability.tsv
+      drug_mechanism_of_action: output/drug_mechanism_of_action
+      disease: output/disease
+    destination: output/target
+    settings:
+      num_partitions: 10
+
+  #################################################################################################
+
+  #: GENE_ESSENTIALITY STEP :######################################################################
+  gene_essentiality:
     - name: pyspark gene_essentiality
       pyspark: gene_essentiality
       source:
@@ -199,6 +231,17 @@ steps:
       destination: intermediate/target/gene-essentiality/essentiality.parquet
       settings:
         keep_only_essentials: false
+    - name: pyspark target_essentiality
+      requires:
+        - pyspark gene_essentiality
+      pyspark: target_essentiality
+      source:
+        essentiality: intermediate/target/gene-essentiality/essentiality.parquet
+        target: output/target
+      destination: output/target_essentiality
+      settings:
+      num_partitions: 10
+
   ##################################################################################################
 
   #: PHARMACOGENETICS STEP :########################################################################
@@ -1550,7 +1593,7 @@ steps:
       properties:
         spark.driver.memory: 16g
   ##################################################################################################
-  
+
   #: ASSOCIATION TIMESERIES VIEW STEP :#############################################################
   association_timeseries_view:
     - name: pyspark timeseries view
@@ -1563,4 +1606,32 @@ steps:
       destination: view/association_timeseries
       properties:
         spark.driver.memory: 12g
+  ##################################################################################################
+
+  #: RELEASE METRICS STEP :##########################################################################
+  release_metrics:
+    - name: transform release_metrics
+      transformer: release_metrics
+      source: {}
+      destination:
+        parquet: metrics.parquet
+      settings:
+        ot_release: '{{release_name}}'
+        metric_scopes:
+          - /output/*/
+          - /excluded/evidence/*/
+        rich_dataset_whitelist:
+          - /output/evidence_*
+          - /excluded/evidence/*
+          - /output/association_by_datasource_direct
+          - /output/association_by_datasource_indirect
+          - /output/disease
+          - /output/target
+          - /output/drug_molecule
+          - /output/study
+          - /output/clinical_report
+        upload_to_hf_hub: false
+        hf_token_filename: /var/run/secrets/hf_token
+        hf_repo_id: opentargets/ot-release-metrics
+        hf_data_dir: metrics
   ##################################################################################################
