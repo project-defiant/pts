@@ -1,0 +1,45 @@
+"""PySpark schema for Ensembl data."""
+
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
+
+# Ensembl JSON schema (homo_sapiens.json)
+schema: StructType = StructType([
+    StructField('id', StringType(), True),
+    StructField('version', IntegerType(), True),
+    StructField('name', StringType(), True),
+    StructField('chromosome', StringType(), True),
+    StructField('start', IntegerType(), True),
+    StructField('end', IntegerType(), True),
+    StructField('strand', IntegerType(), True),
+    StructField('description', StringType(), True),
+    StructField('display_name', StringType(), True),
+    StructField('gene_type', StringType(), True),
+    StructField('status', StringType(), True),
+    StructField('biotype', StringType(), True),
+    StructField('wgt', StringType(), True),
+    StructField('ncbi_compliant', StringType(), True),
+    StructField('ncbi_gene_id', StringType(), True),
+    StructField('ncbi_symbol', StringType(), True),
+    StructField('omim_id', StringType(), True),
+    StructField('ensembl_prod_id', StringType(), True),
+    StructField('symbol', StringType(), True),
+    StructField('synonyms', ArrayType(StringType()), True),
+    StructField('chr', StringType(), True),
+    StructField('band', StringType(), True),
+    StructField('start_rel', StringType(), True),
+    StructField('end_rel', StringType(), True),
+    StructField('exons', ArrayType(StringType()), True),
+    StructField('exon_start_ends', ArrayType(StringType()), True),
+    StructField('transcripts', ArrayType(StringType()), True),
+    StructField('species', StringType(), True),
+    StructField('assembly', StringType(), True),
+    StructField('sql', StringType(), True),
+    StructField('id_version', StringType(), True),
+    StructField('source', StringType(), True),
+])
