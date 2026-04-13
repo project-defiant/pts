@@ -11,6 +11,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import polars as pl
 from pyspark.sql import SparkSession
 
 
@@ -23,11 +24,12 @@ class TestEnsemblLoader:
 
         # Create a temporary parquet file with minimal data
         with tempfile.TemporaryDirectory() as tmp_dir:
-            test_data = spark.createDataFrame(
+            test_data = pl.DataFrame(
                 [('ENSG000001', 1, 'GENE1', '1', 100, 200, 1)],
-                'id STRING, version INT, name STRING, chromosome STRING, start INT, end INT, strand INT',
+                schema=['id', 'version', 'name', 'chromosome', 'start', 'end', 'strand'],
+                orient='row',
             )
-            test_data.write.parquet(f'{tmp_dir}/test.parquet')
+            test_data.write_parquet(f'{tmp_dir}/test.parquet')
 
             result = load_ensembl(spark, f'{tmp_dir}/test.parquet')
             assert result is not None
@@ -43,11 +45,23 @@ class TestHgncLoader:
 
         # Create a temporary JSON file with minimal data
         with tempfile.TemporaryDirectory() as tmp_dir:
-            test_data = spark.createDataFrame(
+            test_data = pl.DataFrame(
                 [('GENE1', 'Gene One', 'Approved', 'gene', 'category', '1', None, 'ENSG000001', 'HGNC:1', '123')],
-                'approved_symbol STRING, approved_name STRING, status STRING, locus_type STRING, locus_group STRING, chromosome STRING, gene_family_id INT, ensembl_gene_id STRING, hgnc_id STRING, entrez_gene_id STRING',
+                schema=[
+                    'approved_symbol',
+                    'approved_name',
+                    'status',
+                    'locus_type',
+                    'locus_group',
+                    'chromosome',
+                    'gene_family_id',
+                    'ensembl_gene_id',
+                    'hgnc_id',
+                    'entrez_gene_id',
+                ],
+                orient='row',
             )
-            test_data.write.mode('overwrite').json(f'{tmp_dir}/test.json')
+            test_data.write_json(f'{tmp_dir}/test.json')
 
             result = load_hgnc(spark, f'{tmp_dir}/test.json')
             assert result is not None
@@ -63,11 +77,68 @@ class TestUniprotLoader:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a TSV file with minimal data
-            tsv_content = """P12345	PROteinA	Swiss-Prot	Protein A	GENE1	Homo sapiens	9606	150	abc123	ENSG000001	transcript1	protein1	refseq1	GENE1	HGNC:1	OMIM:1
-Q98765	PROteinB	TrEMBL	Protein B	GENE2	Homo sapiens	9606	200	def456	ENSG000002	transcript2	protein2	refseq2	GENE2	HGNC:2	OMIM:2"""
+            data = [
+                (
+                    'P12345',
+                    'PROteinA',
+                    'Swiss-Prot',
+                    'Protein A',
+                    'GENE1',
+                    'Homo sapiens',
+                    '9606',
+                    '150',
+                    'abc123',
+                    'ENSG000001',
+                    'transcript1',
+                    'protein1',
+                    'refseq1',
+                    'GENE1',
+                    'HGNC:1',
+                    'OMIM:1',
+                ),
+                (
+                    'Q98765',
+                    'PROteinB',
+                    'TrEMBL',
+                    'Protein B',
+                    'GENE2',
+                    'Homo sapiens',
+                    '9606',
+                    '200',
+                    'def456',
+                    'ENSG000002',
+                    'transcript2',
+                    'protein2',
+                    'refseq2',
+                    'GENE2',
+                    'HGNC:2',
+                    'OMIM:2',
+                ),
+            ]
+            df = pl.DataFrame(
+                data,
+                schema=[
+                    'accession',
+                    'entry_name',
+                    'reviewed',
+                    'protein_name',
+                    'gene_name',
+                    'organism',
+                    'tax_id',
+                    'length',
+                    'sequence',
+                    'ensembl_gene_id',
+                    'transcript_id',
+                    'protein_id',
+                    'refseq_id',
+                    'gene_name_synonym',
+                    'hgnc_id',
+                    'omim_id',
+                ],
+                orient='row',
+            )
             tsv_path = Path(tmp_dir) / 'test.tsv'
-            tsv_path.write_text(tsv_content)
-
+            df.write_csv(tsv_path, include_header=False, separator='\t')
             result = load_uniprot(spark, str(tsv_path))
             assert result is not None
             assert result.count() > 0
@@ -81,11 +152,12 @@ class TestHpaLoader:
         from pts.transformers.target.hpa import load_hpa
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            test_data = spark.createDataFrame(
+            test_data = pl.DataFrame(
                 [('PM', 'PM', 'Plasma membrane')],
-                'HPA_location STRING, termSL STRING, labelSL STRING',
+                schema=['HPA_location', 'termSL', 'labelSL'],
+                orient='row',
             )
-            test_data.write.parquet(f'{tmp_dir}/test.parquet')
+            test_data.write_parquet(f'{tmp_dir}/test.parquet')
 
             result = load_hpa(spark, f'{tmp_dir}/test.parquet')
             assert result is not None
@@ -101,11 +173,62 @@ class TestGeneticConstraintsLoader:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a TSV file with header
-            tsv_content = """gene_idcanonical	transcript_type	syn.z_score	syn.exp	syn.obs	syn.oe	syn.oe_ci.lower	syn.oe_ci.upper	mis.z_score	mis.exp	mis.obs	mis.oe	mis.oe_ci.lower	mis.oe_ci.upper	lof.pLI	lof.exp	lof.obs	lof.oe	lof.oe_ci.lower	lof.oe_ci.upper	lof.oe_ci.upper_rank	lof.oe_ci.upper_bin_decile	lof.oe_ci.upper_bin_sextile
-ENSG000001	true	protein_coding	1.5	100	50	0.5	0.4	0.6	2.0	100	60	0.6	0.5	0.7	0.9	100	40	0.4	0.3	0.5	10	5	3"""
-            tsv_path = Path(tmp_dir) / 'test.tsv'
-            tsv_path.write_text(tsv_content)
+            schema = [
+                'gene_idcanonical',
+                'transcript_type',
+                'syn.z_score',
+                'syn.exp',
+                'syn.obs',
+                'syn.oe',
+                'syn.oe_ci.lower',
+                'syn.oe_ci.upper',
+                'mis.z_score',
+                'mis.exp',
+                'mis.obs',
+                'mis.oe',
+                'mis.oe_ci.lower',
+                'mis.oe_ci.upper',
+                'lof.pLI',
+                'lof.exp',
+                'lof.obs',
+                'lof.oe',
+                'lof.oe_ci.lower',
+                'lof.oe_ci.upper',
+                'lof.oe_ci.upper_rank',
+                'lof.oe_ci.upper_bin_decile',
+                'lof.oe_ci.upper_bin_sextile',
+            ]
+            data = [
+                (
+                    'ENSG000001',
+                    'protein_coding',
+                    1.5,
+                    100,
+                    50,
+                    0.5,
+                    0.4,
+                    0.6,
+                    2.0,
+                    100,
+                    60,
+                    0.6,
+                    0.5,
+                    0.7,
+                    0.9,
+                    100,
+                    40,
+                    0.4,
+                    0.3,
+                    0.5,
+                    10,
+                    5,
+                    3,
+                ),
+            ]
 
+            df = pl.DataFrame(data, schema=schema, orient='row')
+            tsv_path = Path(tmp_dir) / 'test.tsv'
+            df.write_csv(tsv_path, include_header=True, separator='\t')
             result = load_genetic_constraints(spark, str(tsv_path))
             assert result is not None
             assert result.count() > 0
@@ -119,11 +242,12 @@ class TestTepLoader:
         from pts.transformers.target.tep import load_tep
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            test_data = spark.createDataFrame(
+            test_data = pl.DataFrame(
                 [('ENSG000001', 'Description', 'Therapeutic Area', 'http://example.com')],
-                'targetFromSourceId STRING, description STRING, therapeuticArea STRING, url STRING',
+                schema=['targetFromSourceId', 'description', 'therapeuticArea', 'url'],
+                orient='row',
             )
-            test_data.write.mode('overwrite').json(f'{tmp_dir}/test.json.gz')
+            test_data.write_ndjson(f'{tmp_dir}/test.json.gz', compression='gzip')
 
             result = load_tep(spark, f'{tmp_dir}/test.json.gz')
             assert result is not None
@@ -138,11 +262,21 @@ class TestProjectScoresLoader:
         from pts.transformers.target.project_scores import load_project_scores_ids
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            test_data = spark.createDataFrame(
+            test_data = pl.DataFrame(
                 [('GENE1', 'COSMIC1', 'ENSG000001', '123', 'HGNC:1', 'GENE1', 'NM_001', 'P12345')],
-                'gene_id STRING, cosmic_gene_symbol STRING, ensembl_gene_id STRING, entrez_id STRING, hgnc_id STRING, hgnc_symbol STRING, refseq_id STRING, uniprot_id STRING',
+                schema=[
+                    'gene_id',
+                    'cosmic_gene_symbol',
+                    'ensembl_gene_id',
+                    'entrez_id',
+                    'hgnc_id',
+                    'hgnc_symbol',
+                    'refseq_id',
+                    'uniprot_id',
+                ],
+                orient='row',
             )
-            test_data.write.parquet(f'{tmp_dir}/test.parquet')
+            test_data.write_parquet(f'{tmp_dir}/test.parquet')
 
             result = load_project_scores_ids(spark, f'{tmp_dir}/test.parquet')
             assert result is not None
@@ -158,12 +292,16 @@ class TestHomologyLoader:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a TSV file with species dictionary
-            tsv_content = """#name	species	taxonomy_id
-Homo sapiens	homo_sapiens	9606
-Mus musculus	mus_musculus	10090
-Rattus norvegicus	rattus_norvegicus	10116"""
+            header = ['#name', 'species', 'taxonomy_id']
+            data = [
+                ('Homo sapiens', 'homo_sapiens', 9606),
+                ('Mus musculus', 'mus_musculus', 10090),
+                ('Rattus norvegicus', 'rattus_norvegicus', 10116),
+            ]
+
+            df = pl.DataFrame(data, schema=header, orient='row')
             tsv_path = Path(tmp_dir) / 'species.txt'
-            tsv_path.write_text(tsv_content)
+            df.write_csv(tsv_path, include_header=True, separator='\t')
 
             result = load_ortholog_dict(spark, str(tsv_path))
             assert result is not None
@@ -175,10 +313,45 @@ Rattus norvegicus	rattus_norvegicus	10116"""
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a TSV file with homology data
-            tsv_content = """gene_stable_id	protein_stable_id	species	identity	homology_type	homology_gene_stable_id	homology_protein_stable_id	homology_species	homology_identity	dn	ds	goc_score	wga_coverage	is_high_confidence	homology_id
-ENSG000001	ENSP000001	homo_sapiens	100	ortholog_one_to_one	ENSMUSG000001	ENSMUSP000001	mus_musculus	85	0.1	0.2	0.9	0.8	true	123"""
+            header = [
+                'gene_stable_id',
+                'protein_stable_id',
+                'species',
+                'identity',
+                'homology_type',
+                'homology_gene_stable_id',
+                'homology_protein_stable_id',
+                'homology_species',
+                'homology_identity',
+                'dn',
+                'ds',
+                'goc_score',
+                'wga_coverage',
+                'is_high_confidence',
+                'homology_id',
+            ]
+            data = [
+                (
+                    'ENSG000001',
+                    'ENSP000001',
+                    'homo_sapiens',
+                    100,
+                    'ortholog_one_to_one',
+                    'ENSMUSG000001',
+                    'ENSMUSP000001',
+                    'mus_musculus',
+                    85,
+                    0.1,
+                    0.2,
+                    0.9,
+                    0.8,
+                    True,
+                    123,
+                ),
+            ]
+            df = pl.DataFrame(data, schema=header, orient='row')
             tsv_path = Path(tmp_dir) / 'homology.tsv'
-            tsv_path.write_text(tsv_content)
+            df.write_csv(tsv_path, include_header=True, separator='\t')
 
             result = load_coding_proteins(spark, str(tsv_path))
             assert result is not None
@@ -194,13 +367,44 @@ class TestNcbiLoader:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a gzipped TSV file
-            tsv_content = """#tax_id	GeneID	Symbol	Synonyms	dbXrefs	chromosome	map_location	description	type_of_gene	Symbol_from_nomenclature_authority	Full_name_from_nomenclature_authority	Nomenclature_status	Other_designations	Modification_date
-9606	1	GENE1	SYN1|SYN2	Ensembl:ENSG000001	1	1p36.33	Gene description	protein-coding	GENE1	Gene One	A	Other designations	20240101"""
-            import gzip
+            header = [
+                '#tax_id',
+                'GeneID',
+                'Symbol',
+                'Synonyms',
+                'dbXrefs',
+                'chromosome',
+                'map_location',
+                'description',
+                'type_of_gene',
+                'Symbol_from_nomenclature_authority',
+                'Full_name_from_nomenclature_authority',
+                'Nomenclature_status',
+                'Other_designations',
+                'Modification_date',
+            ]
+            data = [
+                (
+                    9606,
+                    1,
+                    'GENE1',
+                    'SYN1|SYN2',
+                    'Ensembl:ENSG000001',
+                    1,
+                    '1p36.33',
+                    'Gene description',
+                    'protein-coding',
+                    'GENE1',
+                    'Gene One',
+                    'A',
+                    'Other designations',
+                    '20240101',
+                ),
+            ]
+            df = pl.DataFrame(data, schema=header, orient='row')
 
             tsv_path = Path(tmp_dir) / 'test.tsv.gz'
-            with gzip.open(tsv_path, 'wt') as f:
-                f.write(tsv_content)
+            df.write_csv(tsv_path, include_header=True, separator='\t', compression='gzip')
 
             result = load_ncbi(spark, str(tsv_path))
             assert result is not None
@@ -216,9 +420,28 @@ class TestReactomeLoader:
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a TSV file with pathway data
-            tsv_content = """ENSG000001	R-HSA-12345	https://reactome.org/content/detail/R-HSA-12345	Pathway Name	EventCode	Homo sapiens"""
+            data = [
+                (
+                    'ENSG000001',
+                    'R-HSA-12345',
+                    'https://reactome.org/content/detail/R-HSA-12345',
+                    'Pathway Name',
+                    'EventCode',
+                    'homo_sapiens',
+                ),
+            ]
+
+            header = [
+                'ensembl_gene_id',
+                'reactome_id',
+                'url',
+                'pathway_name',
+                'event_code',
+                'species',
+            ]
+            df = pl.DataFrame(data, schema=header, orient='row')
             tsv_path = Path(tmp_dir) / 'pathways.tsv'
-            tsv_path.write_text(tsv_content)
+            df.write_csv(tsv_path, include_header=False, separator='\t')
 
             result = load_reactome_pathways(spark, str(tsv_path))
             assert result is not None
