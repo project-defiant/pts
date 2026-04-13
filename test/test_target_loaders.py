@@ -11,7 +11,6 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
 from pyspark.sql import SparkSession
 
 
@@ -198,6 +197,7 @@ class TestNcbiLoader:
             tsv_content = """#tax_id	GeneID	Symbol	Synonyms	dbXrefs	chromosome	map_location	description	type_of_gene	Symbol_from_nomenclature_authority	Full_name_from_nomenclature_authority	Nomenclature_status	Other_designations	Modification_date
 9606	1	GENE1	SYN1|SYN2	Ensembl:ENSG000001	1	1p36.33	Gene description	protein-coding	GENE1	Gene One	A	Other designations	20240101"""
             import gzip
+
             tsv_path = Path(tmp_dir) / 'test.tsv.gz'
             with gzip.open(tsv_path, 'wt') as f:
                 f.write(tsv_content)

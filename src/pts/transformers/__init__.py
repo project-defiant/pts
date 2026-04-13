@@ -8,13 +8,7 @@ from pts.transformers.ensembl import ensembl
 from pts.transformers.expression_tissue import expression_tissue
 from pts.transformers.go import go
 from pts.transformers.homology import homology
-from pts.transformers.interaction import interaction
 from pts.transformers.openfda import openfda
-from pts.transformers.otar import otar
-from pts.transformers.reactome import reactome
-from pts.transformers.search import search
-from pts.transformers.search_ebi import search_ebi
-from pts.transformers.search_facet import search_facet
 from pts.transformers.so import so
 
 __all__ = [
@@ -26,12 +20,6 @@ __all__ = [
     'expression_tissue',
     'go',
     'homology',
-    'interaction',
     'openfda',
-    'otar',
-    'reactome',
-    'search',
-    'search_ebi',
-    'search_facet',
     'so',
 ]
