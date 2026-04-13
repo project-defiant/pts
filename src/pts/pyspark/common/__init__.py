@@ -2,5 +2,4 @@
 
 from .session import Session
 
-# Exposing shared functions and classes:
 __all__ = ['Session']
